@@ -1,0 +1,45 @@
+syntax = "proto3";
+package mafia;
+
+option go_package = "github.com/Minnakhmetov/soa-practice-2/mafia";
+
+service Mafia {
+    rpc Login(LoginRequest) returns (stream Event);
+    rpc FinishDay(FinishDayRequest) returns (FinishDayResponse);
+    rpc ExecutePlayer(ExecutePlayerRequest) returns (ExecutePlayerResponse);
+    rpc KillPlayer(KillPlayerRequest) returns (KillPlayerResponse);
+    rpc CheckPlayer(CheckPlayerRequest) returns (CheckPlayerResponse);
+    rpc PublishCheckResult(PublishCheckResultRequest) returns (PublishCheckResultResponse);
+}
+
+message Event {
+    string message = 1;
+}
+
+message LoginRequest {}
+
+message FinishDayRequest {}
+
+message FinishDayResponse {}
+
+message ExecutePlayerRequest {}
+
+message ExecutePlayerResponse {}
+
+message KillPlayerRequest {
+    string target = 1;
+}
+
+message KillPlayerResponse {}
+
+message CheckPlayerRequest {
+    string target = 1;
+}
+
+message CheckPlayerResponse {
+    bool is_mafia = 1;
+}
+
+message PublishCheckResultRequest {}
+
+message PublishCheckResultResponse {}
