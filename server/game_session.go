@@ -1,9 +1,7 @@
 package main
 
 import (
-	"fmt"
 	"math/rand"
-	"time"
 
 	"github.com/Minnakhmetov/soa-practice-2/mafia"
 )
@@ -12,28 +10,32 @@ type player struct {
 	username string
 	role     mafia.Role
 	isDead   bool
+	msgs     chan string
 }
 
-type GameSession struct {
+type gameSession struct {
 	players            []player
 	isFinished         bool
 	aliveMafiaCount    int
 	aliveNonMafiaCount int
-	msgs               chan string
 	finish             chan struct{}
 	phase              mafia.GamePhase
 	phaseChange        chan struct{}
 }
 
-func (t *GameSession) mafiaWon() bool {
+func (t *gameSession) broadcast(msg string) {
+	// TO DO: send msg to all players
+}
+
+func (t *gameSession) mafiaWon() bool {
 	return t.aliveMafiaCount >= t.aliveNonMafiaCount
 }
 
-func (t *GameSession) citizensWon() bool {
+func (t *gameSession) citizensWon() bool {
 	return t.aliveMafiaCount == 0
 }
 
-func MakeGameSession(usernames []string) *GameSession {
+func MakeGameSession(usernames []string) *gameSession {
 	var roles []mafia.Role
 
 	for role, count := range mafia.RoleToCount {
@@ -60,42 +62,32 @@ func MakeGameSession(usernames []string) *GameSession {
 		})
 	}
 
-	msgs := make(chan string)
 	finish := make(chan struct{})
 
-	session := GameSession{players: players, msgs: msgs, finish: finish}
+	session := gameSession{players: players, finish: finish}
 
 	return &session
 }
 
-func (t *GameSession) Start() {
-	go func() {
-		for _ = range t.phaseChange {
-			// if t.mafiaWon() {
-			// 	session
-			// }
-
-			phaseDuration := mafia.PhaseDurationInSecs[t.phase]
-			phaseEnd := time.Now().Add(time.Duration(phaseDuration) * time.Second)
-
-			ticker := time.NewTicker(time.Second * 5)
-
-			for currentTime := range ticker.C {
-				timeLeft := phaseEnd.Sub(currentTime)
-				if timeLeft < time.Millisecond {
-
-				}
-				t.msgs <- fmt.Sprintf("Phase will end in %d secs", int(timeLeft.Seconds()+1))
-			}
-
-		}
-	}()
-}
-
-func (t *GameSession) Execute(executor string, executee string) error {
+func (t *gameSession) startDay() {
 
 }
 
-func (t *GameSession) Kill(killer string, victim string) error {
+func (t *gameSession) startNight() {
 
 }
+
+func (t *gameSession) Start() {
+	
+	for {
+
+	}
+}
+
+// func (t *GameSession) Execute(executor string, executee string) error {
+
+// }
+
+// func (t *GameSession) Kill(killer string, victim string) error {
+
+// }
