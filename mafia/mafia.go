@@ -1,10 +1,10 @@
 package mafia
 
-type GamePhase string
+type GamePhaseType string
 
 const (
-	GamePhaseDay   GamePhase = "day"
-	GamePhaseNight GamePhase = "night"
+	GamePhaseTypeDay   GamePhaseType = "day"
+	GamePhaseTypeNight GamePhaseType = "night"
 )
 
 type Role string
@@ -21,9 +21,9 @@ var RoleToCount = map[Role]int{
 	RoleCitizen:  6,
 }
 
-var PlayersRequired = 10
+var PlayersInGame = 10
 
-var PhaseDurationInSecs = map[GamePhase]int{
-	GamePhaseDay:   15,
-	GamePhaseNight: 10,
+var PhaseDurationInSecs = map[GamePhaseType]int{
+	GamePhaseTypeDay:   15,
+	GamePhaseTypeNight: 10,
 }
