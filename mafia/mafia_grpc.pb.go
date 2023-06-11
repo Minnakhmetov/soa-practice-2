@@ -28,6 +28,7 @@ type MafiaClient interface {
 	Shoot(ctx context.Context, in *ShootRequest, opts ...grpc.CallOption) (*ShootResponse, error)
 	Check(ctx context.Context, in *CheckRequest, opts ...grpc.CallOption) (*CheckResponse, error)
 	PublishCheckResult(ctx context.Context, in *PublishCheckResultRequest, opts ...grpc.CallOption) (*PublishCheckResultResponse, error)
+	GetAlivePlayers(ctx context.Context, in *GetAlivePlayersRequest, opts ...grpc.CallOption) (*GetAlivePlayersResponse, error)
 }
 
 type mafiaClient struct {
@@ -54,7 +55,7 @@ func (c *mafiaClient) Login(ctx context.Context, in *LoginRequest, opts ...grpc.
 }
 
 type Mafia_LoginClient interface {
-	Recv() (*Event, error)
+	Recv() (*LoginResponse, error)
 	grpc.ClientStream
 }
 
@@ -62,8 +63,8 @@ type mafiaLoginClient struct {
 	grpc.ClientStream
 }
 
-func (x *mafiaLoginClient) Recv() (*Event, error) {
-	m := new(Event)
+func (x *mafiaLoginClient) Recv() (*LoginResponse, error) {
+	m := new(LoginResponse)
 	if err := x.ClientStream.RecvMsg(m); err != nil {
 		return nil, err
 	}
@@ -115,6 +116,15 @@ func (c *mafiaClient) PublishCheckResult(ctx context.Context, in *PublishCheckRe
 	return out, nil
 }
 
+func (c *mafiaClient) GetAlivePlayers(ctx context.Context, in *GetAlivePlayersRequest, opts ...grpc.CallOption) (*GetAlivePlayersResponse, error) {
+	out := new(GetAlivePlayersResponse)
+	err := c.cc.Invoke(ctx, "/mafia.Mafia/GetAlivePlayers", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // MafiaServer is the server API for Mafia service.
 // All implementations must embed UnimplementedMafiaServer
 // for forward compatibility
@@ -125,6 +135,7 @@ type MafiaServer interface {
 	Shoot(context.Context, *ShootRequest) (*ShootResponse, error)
 	Check(context.Context, *CheckRequest) (*CheckResponse, error)
 	PublishCheckResult(context.Context, *PublishCheckResultRequest) (*PublishCheckResultResponse, error)
+	GetAlivePlayers(context.Context, *GetAlivePlayersRequest) (*GetAlivePlayersResponse, error)
 	mustEmbedUnimplementedMafiaServer()
 }
 
@@ -150,6 +161,9 @@ func (UnimplementedMafiaServer) Check(context.Context, *CheckRequest) (*CheckRes
 func (UnimplementedMafiaServer) PublishCheckResult(context.Context, *PublishCheckResultRequest) (*PublishCheckResultResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method PublishCheckResult not implemented")
 }
+func (UnimplementedMafiaServer) GetAlivePlayers(context.Context, *GetAlivePlayersRequest) (*GetAlivePlayersResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetAlivePlayers not implemented")
+}
 func (UnimplementedMafiaServer) mustEmbedUnimplementedMafiaServer() {}
 
 // UnsafeMafiaServer may be embedded to opt out of forward compatibility for this service.
@@ -172,7 +186,7 @@ func _Mafia_Login_Handler(srv interface{}, stream grpc.ServerStream) error {
 }
 
 type Mafia_LoginServer interface {
-	Send(*Event) error
+	Send(*LoginResponse) error
 	grpc.ServerStream
 }
 
@@ -180,7 +194,7 @@ type mafiaLoginServer struct {
 	grpc.ServerStream
 }
 
-func (x *mafiaLoginServer) Send(m *Event) error {
+func (x *mafiaLoginServer) Send(m *LoginResponse) error {
 	return x.ServerStream.SendMsg(m)
 }
 
@@ -274,6 +288,24 @@ func _Mafia_PublishCheckResult_Handler(srv interface{}, ctx context.Context, dec
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Mafia_GetAlivePlayers_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetAlivePlayersRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MafiaServer).GetAlivePlayers(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/mafia.Mafia/GetAlivePlayers",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MafiaServer).GetAlivePlayers(ctx, req.(*GetAlivePlayersRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Mafia_ServiceDesc is the grpc.ServiceDesc for Mafia service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -300,6 +332,10 @@ var Mafia_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "PublishCheckResult",
 			Handler:    _Mafia_PublishCheckResult_Handler,
+		},
+		{
+			MethodName: "GetAlivePlayers",
+			Handler:    _Mafia_GetAlivePlayers_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

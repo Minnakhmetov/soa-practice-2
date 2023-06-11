@@ -4,16 +4,27 @@ package mafia;
 option go_package = "github.com/Minnakhmetov/soa-practice-2/mafia";
 
 service Mafia {
-    rpc Login(LoginRequest) returns (stream Event);
+    rpc Login(LoginRequest) returns (stream LoginResponse);
     rpc EndTurn(EndTurnRequest) returns (EndTurnResponse);
     rpc VoteAgainst(VoteAgainstRequest) returns (VoteAgainstResponse);
     rpc Shoot(ShootRequest) returns (ShootResponse);
     rpc Check(CheckRequest) returns (CheckResponse);
     rpc PublishCheckResult(PublishCheckResultRequest) returns (PublishCheckResultResponse);
+    rpc GetAlivePlayers(GetAlivePlayersRequest) returns (GetAlivePlayersResponse);
 }
 
-message Event {
-    string message = 1;
+message LoginResponse {
+    oneof event {
+        PhaseChange phase_change = 1;
+        NewMessage new_message = 2;
+    }
+
+    message PhaseChange {
+        string new_phase = 1;
+    }
+    message NewMessage {
+        string text = 1;
+    }
 }
 
 message LoginRequest {}
@@ -43,3 +54,10 @@ message CheckResponse {}
 message PublishCheckResultRequest {}
 
 message PublishCheckResultResponse {}
+
+message GetAlivePlayersRequest {}
+
+message GetAlivePlayersResponse {
+    repeated string alivePlayers = 1;
+}
+

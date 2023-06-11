@@ -1,5 +1,7 @@
 package mafia
 
+import "time"
+
 type GamePhaseType string
 
 const (
@@ -18,12 +20,12 @@ const (
 var RoleToCount = map[Role]int{
 	RoleMafia:    1,
 	RoleCommisar: 1,
-	RoleCitizen:  2,
+	RoleCitizen:  1,
 }
 
-var PlayersInGame = 4
+var PlayersInGame = 3
 
-var PhaseDurationInSecs = map[GamePhaseType]int{
-	GamePhaseTypeDay:   15,
-	GamePhaseTypeNight: 10,
+var PhaseDuration = map[GamePhaseType]time.Duration{
+	GamePhaseTypeDay:   time.Second * 60,
+	GamePhaseTypeNight: time.Second * 60,
 }

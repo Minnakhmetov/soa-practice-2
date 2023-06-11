@@ -56,10 +56,12 @@ func main() {
 	var host string
 	var port int
 	var username string
+	var autoMode bool
 
 	flag.StringVar(&host, "host", "localhost", "server host")
 	flag.IntVar(&port, "port", 65434, "server port")
 	flag.StringVar(&username, "username", "", "username")
+	flag.BoolVar(&autoMode, "auto", false, "run a bot")
 	flag.Parse()
 
 	if username == "" {
@@ -73,14 +75,6 @@ func main() {
 	defer conn.Close()
 
 	client := pb.NewMafiaClient(conn)
-
-	// stream, err := client.Login(metadata.AppendToOutgoingContext(context.Background(), "username", username), &pb.LoginRequest{})
-	// event, err := stream.Recv()
-	// if err != nil {
-	// 	print(err.Error())
-	// }
-	// print(event.GetMessage())
-	// return
 
 	go func() {
 		stream, err := client.Login(getContextWithUsername(username), &pb.LoginRequest{})
@@ -96,7 +90,12 @@ func main() {
 				if err != nil {
 					log.Fatal(err)
 				}
-				println(event.GetMessage())
+				switch e := event.GetEvent().(type) {
+				case *pb.LoginResponse_NewMessage_:
+					println(e.NewMessage.Text)
+				case *pb.LoginResponse_PhaseChange_:
+					//noop
+				}
 			}
 		}
 	}()

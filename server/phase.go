@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -9,6 +10,7 @@ import (
 )
 
 type gamePhase interface {
+	OnStart()
 	VoteAgainst(player string, target string)
 	Shoot(player string, target string)
 	EndTurn(player string)
@@ -17,15 +19,16 @@ type gamePhase interface {
 	GetGameSession() *gameSession
 	OnFinish()
 	GetName() string
-	GetPhaseDurationInSeconds() int
+	GetPhaseDuration() time.Duration
 	GetFinishChannel() chan struct{}
 }
 
 type baseGamePhase struct {
 	name        string
-	duration    int
+	duration    time.Duration
 	gameSession *gameSession
 	finish      chan struct{}
+	groupMsgSender
 }
 
 func (t *baseGamePhase) GetGameSession() *gameSession {
@@ -36,7 +39,7 @@ func (t *baseGamePhase) GetName() string {
 	return t.name
 }
 
-func (t *baseGamePhase) GetPhaseDurationInSeconds() int {
+func (t *baseGamePhase) GetPhaseDuration() time.Duration {
 	return t.duration
 }
 
@@ -45,11 +48,21 @@ func (t *baseGamePhase) GetFinishChannel() chan struct{} {
 }
 
 func RunGamePhase(phase gamePhase) {
-	go func() {
-		phaseEnd := time.Now().Add(time.Duration(phase.GetPhaseDurationInSeconds()) * time.Second)
+	phase.OnStart()
 
-		ticker := time.NewTicker(time.Second * 5)
+	sendLeftTimeMsg := func(timeLeft time.Duration) {
+		phase.GetGameSession().sendAllServerMessage(
+			fmt.Sprintf("The %s will end in %d seconds.", phase.GetName(), int(math.Round(timeLeft.Seconds()))),
+		)
+	}
 
+	phaseEnd := time.Now().Add(phase.GetPhaseDuration())
+
+	ticker := time.NewTicker(time.Second * 20)
+
+	sendLeftTimeMsg(phase.GetPhaseDuration())
+
+	for {
 		select {
 		case currentTime := <-ticker.C:
 			timeLeft := phaseEnd.Sub(currentTime)
@@ -57,16 +70,17 @@ func RunGamePhase(phase gamePhase) {
 			if timeLeft < time.Millisecond {
 				ticker.Stop()
 				phase.OnFinish()
-				break
+				return
 			}
 
-			phase.GetGameSession().sendAllServerMessage(
-				fmt.Sprintf("%s will end in %d secs", phase.GetName(), int(timeLeft.Seconds()+1)),
-			)
+			sendLeftTimeMsg(timeLeft)
+
 		case <-phase.GetFinishChannel():
+			ticker.Stop()
 			phase.OnFinish()
+			return
 		}
-	}()
+	}
 }
 
 type gamePhaseDay struct {
@@ -76,6 +90,10 @@ type gamePhaseDay struct {
 	endedTurn         map[string]struct{}
 }
 
+func (t *gamePhaseDay) OnStart() {
+	t.sendAllServerMessage("The city is waking up. Discuss and vote!")
+}
+
 func (t *gamePhaseDay) playerEndedTurn(player string) bool {
 	_, ok := t.endedTurn[player]
 	return ok
@@ -83,11 +101,7 @@ func (t *gamePhaseDay) playerEndedTurn(player string) bool {
 
 func (t *gamePhaseDay) VoteAgainst(player string, target string) {
 	if t.playerEndedTurn(player) {
-		t.GetGameSession().sendServerMessage(player, "You can't vote after you ended your turn.")
-		return
-	}
-	if player == target {
-		t.GetGameSession().sendServerMessage(player, "You can't vote against yourself.")
+		t.sendServerMessage(player, "You can't vote after you ended your turn.")
 		return
 	}
 	if currentTarget, ok := t.playerVote[player]; ok {
@@ -95,29 +109,29 @@ func (t *gamePhaseDay) VoteAgainst(player string, target string) {
 	}
 	t.playerVote[player] = target
 	t.votesAgainstCount[target]++
-	t.GetGameSession().sendServerMessage(player, fmt.Sprintf("Your vote is against %s now.", target))
+	t.sendServerMessage(player, fmt.Sprintf("Your vote is against %s now.", target))
 }
 
 func (t *gamePhaseDay) Shoot(player string, target string) {
-	t.GetGameSession().sendServerMessage(player, "You can't shoot during the day")
+	t.sendServerMessage(player, "You can't shoot during the day")
 }
 
 func (t *gamePhaseDay) EndTurn(player string) {
 	if _, ok := t.endedTurn[player]; ok {
-		t.GetGameSession().sendServerMessage(player, "You already finished your turn.")
+		t.sendServerMessage(player, "You already finished your turn.")
 		return
 	}
 	t.endedTurn[player] = struct{}{}
-	if len(t.endedTurn) == t.GetGameSession().GetPlayerCount() {
+	if len(t.endedTurn) == t.GetGameSession().GetAlivePlayerCount() {
 		t.GetFinishChannel() <- struct{}{}
 	}
-	t.GetGameSession().sendAllServerMessage(fmt.Sprintf("%s finished their turn.", player))
+	t.sendAllServerMessage(fmt.Sprintf("%s finished their turn.", player))
 }
 
 func (t *gamePhaseDay) OnFinish() {
-	t.GetGameSession().sendAllServerMessage("The day is over.")
+	t.sendAllServerMessage("The day is over.")
 
-	voteResults := make([]string, t.GetGameSession().GetPlayerCount())
+	voteResults := make([]string, t.GetGameSession().GetAlivePlayerCount())
 	maxVoteCount := 0
 
 	for player, votes := range t.votesAgainstCount {
@@ -133,13 +147,15 @@ func (t *gamePhaseDay) OnFinish() {
 		resultTableLines = append(resultTableLines, line)
 	}
 
-	addLineToResult("")
+	addLineToResult("\n")
 	addLineToResult("Poll result:")
-	addLineToResult("username\tvotes against")
+	addLineToResult("player\tvotes")
 
 	for player, votes := range t.votesAgainstCount {
-		addLineToResult(fmt.Sprintf("%s: %d", player, votes))
+		addLineToResult(fmt.Sprintf("%s:\t%d", player, votes))
 	}
+
+	addLineToResult("\n")
 
 	mostVoted := ""
 	multipleWinners := false
@@ -154,41 +170,42 @@ func (t *gamePhaseDay) OnFinish() {
 		}
 	}
 
-	if multipleWinners {
-		addLineToResult("There are multiple players with max number of votes so no one will die today.")
+	if maxVoteCount == 0 {
+		addLineToResult("No one voted today so no one will die today.")
 	} else {
-		addLineToResult(fmt.Sprintf("%[1]s got max number of votes. It's time to go, %[1]s.", mostVoted))
-	}
-
-	t.GetGameSession().sendAllServerMessage(strings.Join(resultTableLines, "\n"))
-
-	if !multipleWinners {
-		t.GetGameSession().kill(mostVoted)
+		t.sendAllServerMessage(strings.Join(resultTableLines, "\n"))
+		if multipleWinners {
+			t.sendAllServerMessage("There are multiple players with max number of votes so no one will die today.")
+		} else {
+			t.sendAllServerMessage(fmt.Sprintf("%[1]s got max number of votes. It's time to go, %[1]s.", mostVoted))
+			t.GetGameSession().kill(mostVoted)
+		}
 	}
 
 	t.GetGameSession().enqueuePhase(MakeGamePhaseNight(t.GetGameSession()))
 }
 
 func (t *gamePhaseDay) Check(player string, target string) {
-	t.GetGameSession().sendServerMessage(player, "You can't check during the day.")
+	t.sendServerMessage(player, "You can't check during the day.")
 }
 
 func (t *gamePhaseDay) PublishCheckResult(player string) {
 	if t.GetGameSession().GetPlayerRole(player) != mafia.RoleCommisar {
-		t.GetGameSession().sendServerMessage(player, "Only commissar can publish check results.")
+		t.sendServerMessage(player, "Only commissar can publish check results.")
 		return
 	}
 	msg := fmt.Sprintf("For now I know that following users are mafiosi: %s", strings.Join(t.GetGameSession().uncoveredMafia, ", "))
-	t.GetGameSession().sendAll("commissar", msg)
+	t.sendAll("commissar", msg)
 }
 
 func MakeGamePhaseDay(session *gameSession) *gamePhaseDay {
 	return &gamePhaseDay{
 		baseGamePhase: baseGamePhase{
-			name:        "day",
-			duration:    mafia.PhaseDurationInSecs[mafia.GamePhaseTypeDay],
-			gameSession: session,
-			finish:      make(chan struct{}),
+			name:           "day",
+			duration:       mafia.PhaseDuration[mafia.GamePhaseTypeDay],
+			gameSession:    session,
+			finish:         make(chan struct{}),
+			groupMsgSender: session.groupMsgSender,
 		},
 		votesAgainstCount: map[string]int{},
 		playerVote:        map[string]string{},
@@ -202,22 +219,26 @@ type gamePhaseNight struct {
 	shotByMafia string
 }
 
+func (t *gamePhaseNight) OnStart() {
+	t.sendAllServerMessage("The night is falling. It's time for mafiosi and a commissar to make their moves.")
+}
+
 func (t *gamePhaseNight) VoteAgainst(player string, target string) {
-	t.GetGameSession().sendServerMessage(player, "You can't vote during the night.")
+	t.sendServerMessage(player, "You can't vote during the night.")
 }
 
 func (t *gamePhaseNight) EndTurn(player string) {
-	t.GetGameSession().sendServerMessage(player, "You can't end turn during the night.")
+	t.sendServerMessage(player, "You can't end turn during the night.")
 }
 
 func (t *gamePhaseNight) Check(player string, target string) {
 	if t.GetGameSession().GetPlayerRole(player) != mafia.RoleCommisar {
-		t.GetGameSession().sendServerMessage(player, "Only commissar can do a check.")
+		t.sendServerMessage(player, "Only commissar can do a check.")
 		return
 	}
 
 	if t.checkUsed {
-		t.GetGameSession().sendServerMessage(player, "You already did a check tonight.")
+		t.sendServerMessage(player, "You already did a check tonight.")
 		return
 	}
 
@@ -225,9 +246,12 @@ func (t *gamePhaseNight) Check(player string, target string) {
 
 	if t.GetGameSession().GetPlayerRole(target) == mafia.RoleMafia {
 		t.GetGameSession().AddUncoveredMafia(target)
-		t.GetGameSession().sendServerMessage(player, fmt.Sprintf("%s is a mafioso. Good job!", target))
+		t.sendServerMessage(player, fmt.Sprintf("%s is a mafioso. Good job!", target))
 	} else {
-		t.GetGameSession().sendServerMessage(player, fmt.Sprintf("%s is not a mafioso. Keep trying!", target))
+		t.sendServerMessage(player, fmt.Sprintf("%s is not a mafioso. Keep trying!", target))
+	}
+	if t.nightRolesDone() {
+		t.GetFinishChannel() <- struct{}{}
 	}
 }
 
@@ -237,33 +261,35 @@ func (t *gamePhaseNight) nightRolesDone() bool {
 
 func (t *gamePhaseNight) Shoot(player string, target string) {
 	if t.GetGameSession().GetPlayerRole(player) != mafia.RoleMafia {
-		t.GetGameSession().sendServerMessage(player, "Only mafiosi can shoot.")
+		t.sendServerMessage(player, "Only mafiosi can shoot.")
 		return
 	}
 	if t.shotByMafia != "" {
-		t.GetGameSession().sendServerMessage(player, "You already shot someone tonight.")
+		t.sendServerMessage(player, "You already shot someone tonight.")
 		return
 	}
 	if t.GetGameSession().IsDead(target) {
-		t.GetGameSession().sendServerMessage(player, "You can't shot dead people.")
+		t.sendServerMessage(player, "You can't shot dead people.")
 		return
 	}
 	t.shotByMafia = target
+	t.sendServerMessage(player, fmt.Sprintf("You brutally killed %s.", target))
 	if t.nightRolesDone() {
 		t.GetFinishChannel() <- struct{}{}
 	}
 }
 
 func (t *gamePhaseNight) PublishCheckResult(player string) {
-	t.GetGameSession().sendServerMessage(player, "You can't publish check result during the night.")
+	t.sendServerMessage(player, "You can't publish check result during the night.")
 }
 
 func (t *gamePhaseNight) OnFinish() {
-	t.GetGameSession().sendAllServerMessage("The night is over.")
-	if t.shotByMafia != "" {
-		t.GetGameSession().sendAllServerMessage("Mafia didn't shoot anyone today.")
+	t.sendAllServerMessage("The night is over.")
+	if t.shotByMafia == "" {
+		t.sendAllServerMessage("Mafia didn't shoot anyone today.")
 	} else {
-		t.GetGameSession().sendAllServerMessage(fmt.Sprintf("Today %s was shot by mafiosi.", t.shotByMafia))
+		t.sendAllServerMessage(fmt.Sprintf("Today %s was shot by mafiosi.", t.shotByMafia))
+		t.GetGameSession().kill(t.shotByMafia)
 	}
 	t.GetGameSession().enqueuePhase(MakeGamePhaseDay(t.GetGameSession()))
 }
@@ -271,10 +297,11 @@ func (t *gamePhaseNight) OnFinish() {
 func MakeGamePhaseNight(session *gameSession) *gamePhaseNight {
 	return &gamePhaseNight{
 		baseGamePhase: baseGamePhase{
-			name:        "night",
-			duration:    mafia.PhaseDurationInSecs[mafia.GamePhaseTypeNight],
-			gameSession: session,
-			finish:      make(chan struct{}),
+			name:           "night",
+			duration:       mafia.PhaseDuration[mafia.GamePhaseTypeNight],
+			gameSession:    session,
+			finish:         make(chan struct{}),
+			groupMsgSender: session.groupMsgSender,
 		},
 		checkUsed:   false,
 		shotByMafia: "",

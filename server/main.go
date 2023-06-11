@@ -16,6 +16,10 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+const (
+	MaxUsernameLength = 15
+)
+
 type connection struct {
 	ch    chan string
 	close chan struct{}
@@ -42,6 +46,7 @@ func (t *mafiaServer) disconnect(username string) {
 }
 
 func (t *mafiaServer) send(sender string, receiver string, msg string) {
+	log.Printf("sending \"%s\" from %s to %s\n", msg, sender, receiver)
 	conn, ok := t.playerToConnecton[receiver]
 	if !ok {
 		panic(fmt.Sprintf("user %s not connected.", receiver))
@@ -84,13 +89,15 @@ func (t *mafiaServer) addToWaitingList(username string) {
 
 	if len(t.waitingList) == mafia.PlayersInGame {
 		t.runGameSession(t.waitingList)
-
+		t.waitingList = nil
 	} else if len(t.waitingList) < mafia.PlayersInGame {
 		needPlayers := mafia.PlayersInGame - len(t.waitingList)
 
 		log.Printf("need %d more players for game", needPlayers)
 
-		makeGroupMsgSender(t, t.waitingList).sendAllServerMessage(
+		sender := makeGroupMsgSender(t, t.waitingList)
+		sender.sendAllServerMessage(fmt.Sprintf("%s connected", username))
+		sender.sendAllServerMessage(
 			fmt.Sprintf("Waiting for players. %d more players are needed.", needPlayers),
 		)
 
@@ -102,9 +109,13 @@ func (t *mafiaServer) addToWaitingList(username string) {
 func (t *mafiaServer) Login(request *mafia.LoginRequest, serv mafia.Mafia_LoginServer) error {
 	username := extractUsername(serv.Context())
 
-	// if _, ok := t.playerToConnecton[username]; ok {
-	// 	return status.Errorf(codes.AlreadyExists, "User with this name already logged in.")
-	// }
+	if len(username) > MaxUsernameLength {
+		return status.Errorf(codes.AlreadyExists, "Username is too long. Max length is %d.", MaxUsernameLength)
+	}
+
+	if _, ok := t.playerToConnecton[username]; ok {
+		return status.Errorf(codes.AlreadyExists, "User with this name already logged in.")
+	}
 
 	close := make(chan struct{})
 	ch := make(chan string, 5)
@@ -128,8 +139,12 @@ func (t *mafiaServer) Login(request *mafia.LoginRequest, serv mafia.Mafia_LoginS
 				t.disconnect(username)
 				return
 			case msg := <-ch:
-				log.Printf("sending \"%s\" to %s\n", msg, username)
-				err := serv.Send(&pb.Event{Message: msg})
+				err := serv.Send(&pb.LoginResponse{
+					Event: &pb.LoginResponse_NewMessage_{
+						NewMessage: &pb.LoginResponse_NewMessage{Text: msg},
+					},
+				})
+
 				if err != nil {
 					log.Printf("error when sending message to %s: %s\n", username, err.Error())
 					t.disconnect(username)
