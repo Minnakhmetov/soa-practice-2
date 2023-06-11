@@ -132,7 +132,7 @@ func MakeGameSession(usernames []string, sender eventSender) *gameSession {
 func (t *gameSession) Run() {
 	for player, playerInfo := range t.playerInfoByUsername {
 		t.sendMsgFromServer(player, fmt.Sprintf("The game begins. Your role: %s", playerInfo.role))
-		t.sendRoleAssignment(player, playerInfo.role)
+		t.sendRoleAssignment(player, playerInfo.role)	
 	}
 
 	go func() {
@@ -200,4 +200,8 @@ func (t *gameSession) GetAlivePlayers() []string {
 		}
 	}
 	return alivePlayers
+}
+
+func (t *gameSession) GetRedisChannel(player string) string {
+	return t.currentPhase.GetRedisChannel(player)
 }

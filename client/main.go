@@ -13,6 +13,7 @@ import (
 
 	"github.com/Minnakhmetov/soa-practice-2/mafia"
 	pb "github.com/Minnakhmetov/soa-practice-2/mafia"
+	"github.com/redis/go-redis/v9"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
@@ -101,10 +102,12 @@ func main() {
 	var port int
 	var username string
 	var autoMode bool
+	var redisPassword string
 
 	flag.StringVar(&host, "host", "localhost", "server host")
 	flag.IntVar(&port, "port", 65434, "server port")
 	flag.StringVar(&username, "username", "", "username")
+	flag.StringVar(&redisPassword, "rpass", "changeme", "redis password")
 	flag.BoolVar(&autoMode, "auto", false, "run a bot")
 	flag.Parse()
 
@@ -142,6 +145,36 @@ func main() {
 		}
 	}
 
+	redisClient := redis.NewClient(&redis.Options{
+		Addr:     "localhost:6379",
+		Password: redisPassword,
+		DB:       0,
+	})
+
+	newRedisChannel := make(chan string)
+	var currentRedisChannel string = "lobby"
+	var pubsub *redis.PubSub = redisClient.Subscribe(context.Background(), currentRedisChannel)
+
+	go func() {
+		listenCurrentChannel := func() {
+			for {
+				select {
+				case newChannel := <-newRedisChannel:
+					currentRedisChannel = newChannel
+					pubsub.Close()
+					pubsub = redisClient.Subscribe(context.Background(), newChannel)
+					return
+
+				case msg := <-pubsub.Channel():
+					println(msg.Payload)
+				}
+			}
+		}
+		for {
+			listenCurrentChannel()
+		}
+	}()
+
 	go func() {
 		stream, err := client.Login()
 		if err != nil {
@@ -165,6 +198,8 @@ func main() {
 					}
 				case *pb.LoginResponse_RoleAssignment_:
 					role = pb.Role(e.RoleAssignment.GetRole())
+				case *pb.LoginResponse_NewBrokerChannel_:
+					newRedisChannel <- e.NewBrokerChannel.Name
 				}
 			}
 		}
@@ -174,9 +209,8 @@ func main() {
 
 	for scanner.Scan() {
 		line := scanner.Text()
-		if line == "" {
 
-		} else if line[0] == '/' {
+		if line[0] == '/' {
 			tokens := strings.Split(line, " ")
 
 			info, ok := commandInfoByName[tokens[0]]
@@ -206,6 +240,10 @@ func main() {
 
 			if err != nil {
 				panic(err)
+			}
+		} else {
+			if currentRedisChannel != "" {
+				redisClient.Publish(context.Background(), currentRedisChannel, fmt.Sprintf("[%s] %s", username, line))
 			}
 		}
 	}
