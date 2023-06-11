@@ -1,163 +1,273 @@
 package main
 
-// import (
-// 	"context"
-// 	"fmt"
-// 	"log"
-// 	"net"
-// 	"sync"
+import (
+	"context"
+	"flag"
+	"fmt"
+	"log"
+	"net"
+	"sync"
 
-// 	"github.com/Minnakhmetov/soa-practice-2/mafia"
-// 	pb "github.com/Minnakhmetov/soa-practice-2/mafia"
-// 	"google.golang.org/grpc"
-// 	"google.golang.org/grpc/codes"
-// 	"google.golang.org/grpc/status"
-// )
+	"github.com/Minnakhmetov/soa-practice-2/mafia"
+	pb "github.com/Minnakhmetov/soa-practice-2/mafia"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
+)
 
-// type connection struct {
-// 	ch    chan string
-// 	close chan struct{}
-// }
+type connection struct {
+	ch    chan string
+	close chan struct{}
+}
 
-// type mafiaServer struct {
-// 	pb.UnimplementedMafiaServer
+type mafiaServer struct {
+	pb.UnimplementedMafiaServer
 
-// 	playerToSession   map[string]*GameSession
-// 	playerToConnecton map[string]*connection
+	playerToSession   map[string]*gameSession
+	playerToConnecton map[string]*connection
 
-// 	waitingPlayersMutex sync.Mutex
-// 	waitingPlayers      []string
-// }
+	waitingListMutex sync.Mutex
+	waitingList      []string
 
-// func (t *mafiaServer) init() {
-// 	// TO DO: run garbage collector
-// }
+	msgSender
+}
 
-// func (t *mafiaServer) broadcast(usernames []string, msg string) {
-// 	for _, username := range usernames {
-// 		select {
-// 		case t.playerToConnecton[username].ch <- msg:
-// 			// noop
-// 		default:
-// 			log.Printf("Couldn't send msg to %s\n", username)
-// 		}
-// 	}
-// }
+func (t *mafiaServer) init() {
+	// TO DO: run garbage collector
+}
 
-// func (t *mafiaServer) disconnect(username string) {
-// 	delete(t.playerToConnecton, username)
-// }
+func (t *mafiaServer) disconnect(username string) {
+	delete(t.playerToConnecton, username)
+}
 
-// func (t *mafiaServer) startGameSession(usernames []string) {
-// 	session := MakeGameSession(usernames)
+func (t *mafiaServer) send(sender string, receiver string, msg string) {
+	conn, ok := t.playerToConnecton[receiver]
+	if !ok {
+		panic(fmt.Sprintf("user %s not connected.", receiver))
+	}
+	select {
+	case conn.ch <- fmt.Sprintf("[%s] %s", sender, msg):
+		// noop
+	default:
+		log.Printf("%s user msg buffer is full", receiver)
+		t.disconnect(sender)
+	}
+}
 
-// 	for _, username := range usernames {
-// 		t.playerToSession[username] = session
-// 	}
+func (t *mafiaServer) sendServerMessage(receiver string, msg string) {
+	t.send("server", receiver, msg)
+}
 
-// 	// go func() {
-// 	// 	for {
-// 	// 		select {
-// 	// 		case msg := <-session.msgs:
-// 	// 			t.broadcast(usernames, msg)
-// 	// 		}
-// 	// 	}
-// 	// }()
+func (t *mafiaServer) runGameSession(usernames []string) {
+	session := MakeGameSession(usernames, t)
 
-// 	session.Start()
-// }
+	for _, username := range usernames {
+		t.playerToSession[username] = session
+	}
 
-// func (t *mafiaServer) inActiveGameSession(username string) bool {
-// 	_, ok := t.playerToSession[username]
-// 	return ok
-// }
+	session.Run()
+}
 
-// func (t *mafiaServer) addWaitingPlayer(username string) {
-// 	t.waitingPlayersMutex.Lock()
-// 	defer t.waitingPlayersMutex.Unlock()
+func (t *mafiaServer) inActiveGameSession(username string) bool {
+	_, ok := t.playerToSession[username]
+	return ok
+}
 
-// 	t.waitingPlayers = append(t.waitingPlayers, username)
-// 	if len(t.waitingPlayers) == mafia.PlayersRequired {
-// 		t.startGameSession(t.waitingPlayers)
-// 	}
-// }
+func (t *mafiaServer) addToWaitingList(username string) {
+	t.waitingListMutex.Lock()
+	defer t.waitingListMutex.Unlock()
 
-// func (t *mafiaServer) Login(request *mafia.LoginRequest, serv mafia.Mafia_LoginServer) error {
-// 	username := extractUsername(serv.Context())
+	t.waitingList = append(t.waitingList, username)
 
-// 	if _, ok := t.playerToConnecton[username]; ok {
-// 		return status.Errorf(codes.AlreadyExists, "User with this name already logged in")
-// 	}
+	log.Printf("added %s to waiting list", username)
 
-// 	close := make(chan struct{})
-// 	ch := make(chan string, 50)
+	if len(t.waitingList) == mafia.PlayersInGame {
+		t.runGameSession(t.waitingList)
 
-// 	t.playerToConnecton[username] = &connection{ch: ch, close: close}
+	} else if len(t.waitingList) < mafia.PlayersInGame {
+		needPlayers := mafia.PlayersInGame - len(t.waitingList)
 
-// 	wg := sync.WaitGroup{}
-// 	defer wg.Wait()
-// 	wg.Add(1)
+		log.Printf("need %d more players for game", needPlayers)
 
-// 	go func() {
-// 		select {
-// 		case <-close:
-// 			t.disconnect(username)
-// 		case msg := <-ch:
-// 			err := serv.Send(&pb.Event{Message: msg})
-// 			if err != nil {
-// 				log.Printf("error when sending message to %s: %s\n", username, err.Error())
-// 				t.disconnect(username)
-// 			}
-// 		}
-// 		wg.Done()
-// 	}()
+		makeGroupMsgSender(t, t.waitingList).sendAllServerMessage(
+			fmt.Sprintf("Waiting for players. %d more players are needed.", needPlayers),
+		)
 
-// 	// TO DO: check if player already in active game session (reconnected)
+	} else {
+		panic("waiting list too long")
+	}
+}
 
-// 	t.addWaitingPlayer(username)
-// }
+func (t *mafiaServer) Login(request *mafia.LoginRequest, serv mafia.Mafia_LoginServer) error {
+	username := extractUsername(serv.Context())
 
-// func (t *mafiaServer) ExecutePlayer(ctx context.Context, request *pb.ExecutePlayerRequest) (*pb.ExecutePlayerResponse, error) {
-// 	username := extractUsername(ctx)
-// 	if _, ok := t.playerToConnecton[username]; ok {
-// 		return nil, status.Errorf(codes.Unauthenticated, "User is not logged in")
-// 	}
-// 	session, ok := t.playerToSession[username]
-// 	if ok {
-// 		return nil, status.Errorf(codes.NotFound, "User is not in game session")
-// 	}
+	// if _, ok := t.playerToConnecton[username]; ok {
+	// 	return status.Errorf(codes.AlreadyExists, "User with this name already logged in.")
+	// }
 
-// 	if session.phase != mafia.GamePhaseDay {
-// 		return nil, status.Errorf(codes.FailedPrecondition, "Execution can be performed only during the day")
-// 	}
+	close := make(chan struct{})
+	ch := make(chan string, 5)
 
-// }
+	t.playerToConnecton[username] = &connection{ch: ch, close: close}
 
-// func extractUsername(context context.Context) string {
-// 	return context.Value(context).(string)
-// }
+	log.Printf("user %s connected\n", username)
 
-// // func (t *mafiaServer) Login(context context.Context, request *pb.LoginRequest) (*pb.LoginResponse, error) {
-// // 	t.waitingPlayersMutex.Lock()
-// // 	defer t.waitingPlayersMutex.Unlock()
-// // 	t.playerToConnecton[request.GetUsername()] = connection{
+	wg := sync.WaitGroup{}
+	defer wg.Wait()
+	wg.Add(1)
 
-// // 	}
-// // 	// if len(t.waitingPlayers) ==
-// // }
+	areYouReady := make(chan struct{})
+	yesCaptain := make(chan struct{})
 
-// // func (t *server) Do(context context.Context, request *pb.Request) (*pb.Response, error) {
-// // 	return &pb.Response{Message: fmt.Sprintf("hi %s", request.GetMessage()), Z: request.GetX() * request.GetY()}, nil
-// // }
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-close:
+				t.disconnect(username)
+				return
+			case msg := <-ch:
+				log.Printf("sending \"%s\" to %s\n", msg, username)
+				err := serv.Send(&pb.Event{Message: msg})
+				if err != nil {
+					log.Printf("error when sending message to %s: %s\n", username, err.Error())
+					t.disconnect(username)
+					return
+				}
+			case <-areYouReady:
+				yesCaptain <- struct{}{}
+			}
+		}
+	}()
 
-// // const port = 65434
+	areYouReady <- struct{}{}
+	<-yesCaptain
 
-// // func main() {
-// // 	listener, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", port))
-// // 	if err != nil {
-// // 		panic(err)
-// // 	}
-// // 	srv := grpc.NewServer()
-// // 	pb.RegisterReverseServer(srv, &mafiaServer{})
-// // 	srv.Serve(listener)
-// // }
+	t.sendServerMessage(username, "You are connected to server.")
+
+	// TO DO: check if player already in active game session (reconnected)
+
+	t.addToWaitingList(username)
+	wg.Wait()
+	return nil
+}
+
+func (t *mafiaServer) isLoggedIn(username string) bool {
+	_, ok := t.playerToConnecton[username]
+	return ok
+}
+
+func (t *mafiaServer) GetGameSession(username string) (*gameSession, error) {
+	if !t.isLoggedIn(username) {
+		return nil, status.Error(codes.Unauthenticated, "User is not logged in.")
+	}
+	session, ok := t.playerToSession[username]
+	if !ok {
+		return nil, status.Error(codes.NotFound, "User is not in a game session.")
+	}
+	return session, nil
+}
+
+func handleClientAction[R any](server *mafiaServer, ctx context.Context, action func(*gameSession, string)) (*R, error) {
+	username := extractUsername(ctx)
+	session, err := server.GetGameSession(username)
+	if err != nil {
+		return nil, err
+	}
+	action(session, username)
+	return new(R), nil
+}
+
+func (t *mafiaServer) EndTurn(ctx context.Context, request *mafia.EndTurnRequest) (*mafia.EndTurnResponse, error) {
+	return handleClientAction[mafia.EndTurnResponse](t, ctx, (*gameSession).EndTurn)
+}
+
+func (t *mafiaServer) VoteAgainst(ctx context.Context, request *mafia.VoteAgainstRequest) (*mafia.VoteAgainstResponse, error) {
+	return handleClientAction[mafia.VoteAgainstResponse](t, ctx,
+		func(gs *gameSession, username string) {
+			gs.VoteAgainst(username, request.GetTarget())
+		},
+	)
+}
+
+func (t *mafiaServer) Shoot(ctx context.Context, request *mafia.ShootRequest) (*mafia.ShootResponse, error) {
+	return handleClientAction[mafia.ShootResponse](t, ctx,
+		func(gs *gameSession, username string) {
+			gs.Shoot(username, request.GetTarget())
+		},
+	)
+}
+
+func (t *mafiaServer) Check(ctx context.Context, request *mafia.CheckRequest) (*mafia.CheckResponse, error) {
+	return handleClientAction[mafia.CheckResponse](t, ctx,
+		func(gs *gameSession, username string) {
+			gs.Check(username, request.GetTarget())
+		},
+	)
+}
+
+func (t *mafiaServer) PublishCheckResult(ctx context.Context, _ *mafia.PublishCheckResultRequest) (*mafia.PublishCheckResultResponse, error) {
+	return handleClientAction[mafia.PublishCheckResultResponse](t, ctx, (*gameSession).PublishCheckResult)
+}
+
+func extractUsername(ctx context.Context) string {
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return ""
+	}
+	return md["username"][0]
+}
+
+func MakeMafiaServer() *mafiaServer {
+	return &mafiaServer{
+		playerToSession:   map[string]*gameSession{},
+		playerToConnecton: map[string]*connection{},
+	}
+}
+
+type msgSender interface {
+	send(sender string, receiver string, msg string)
+	sendServerMessage(receiver string, msg string)
+}
+
+type groupMsgSender struct {
+	msgSender
+	members []string
+}
+
+func (t *groupMsgSender) broadcast(sender string, msg string) {
+	for _, player := range t.members {
+		t.send(sender, player, msg)
+	}
+}
+
+func (t *groupMsgSender) sendAll(sender string, msg string) {
+	t.broadcast(sender, msg)
+}
+
+func (t *groupMsgSender) sendAllServerMessage(msg string) {
+	t.sendAll("server", msg)
+}
+
+func makeGroupMsgSender(sender msgSender, members []string) *groupMsgSender {
+	return &groupMsgSender{msgSender: sender, members: members}
+}
+
+func main() {
+	var host string
+	var port int
+	flag.StringVar(&host, "host", "localhost", "host")
+	flag.IntVar(&port, "port", 65434, "port")
+	flag.Parse()
+
+	log.Printf("Server running on %s:%d\n", host, port)
+
+	listener, err := net.Listen("tcp", fmt.Sprintf("%s:%d", host, port))
+	if err != nil {
+		panic(err)
+	}
+	srv := grpc.NewServer()
+	pb.RegisterMafiaServer(srv, MakeMafiaServer())
+	srv.Serve(listener)
+}

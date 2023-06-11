@@ -5,10 +5,10 @@ option go_package = "github.com/Minnakhmetov/soa-practice-2/mafia";
 
 service Mafia {
     rpc Login(LoginRequest) returns (stream Event);
-    rpc FinishDay(FinishDayRequest) returns (FinishDayResponse);
-    rpc ExecutePlayer(ExecutePlayerRequest) returns (ExecutePlayerResponse);
-    rpc KillPlayer(KillPlayerRequest) returns (KillPlayerResponse);
-    rpc CheckPlayer(CheckPlayerRequest) returns (CheckPlayerResponse);
+    rpc EndTurn(EndTurnRequest) returns (EndTurnResponse);
+    rpc VoteAgainst(VoteAgainstRequest) returns (VoteAgainstResponse);
+    rpc Shoot(ShootRequest) returns (ShootResponse);
+    rpc Check(CheckRequest) returns (CheckResponse);
     rpc PublishCheckResult(PublishCheckResultRequest) returns (PublishCheckResultResponse);
 }
 
@@ -18,27 +18,27 @@ message Event {
 
 message LoginRequest {}
 
-message FinishDayRequest {}
+message EndTurnRequest {}
 
-message FinishDayResponse {}
+message EndTurnResponse {}
 
-message ExecutePlayerRequest {}
-
-message ExecutePlayerResponse {}
-
-message KillPlayerRequest {
+message VoteAgainstRequest {
     string target = 1;
 }
 
-message KillPlayerResponse {}
+message VoteAgainstResponse {}
 
-message CheckPlayerRequest {
+message ShootRequest {
     string target = 1;
 }
 
-message CheckPlayerResponse {
-    bool is_mafia = 1;
+message ShootResponse {}
+
+message CheckRequest {
+    string target = 1;
 }
+
+message CheckResponse {}
 
 message PublishCheckResultRequest {}
 

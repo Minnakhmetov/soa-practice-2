@@ -23,10 +23,10 @@ const _ = grpc.SupportPackageIsVersion7
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type MafiaClient interface {
 	Login(ctx context.Context, in *LoginRequest, opts ...grpc.CallOption) (Mafia_LoginClient, error)
-	FinishDay(ctx context.Context, in *FinishDayRequest, opts ...grpc.CallOption) (*FinishDayResponse, error)
-	ExecutePlayer(ctx context.Context, in *ExecutePlayerRequest, opts ...grpc.CallOption) (*ExecutePlayerResponse, error)
-	KillPlayer(ctx context.Context, in *KillPlayerRequest, opts ...grpc.CallOption) (*KillPlayerResponse, error)
-	CheckPlayer(ctx context.Context, in *CheckPlayerRequest, opts ...grpc.CallOption) (*CheckPlayerResponse, error)
+	EndTurn(ctx context.Context, in *EndTurnRequest, opts ...grpc.CallOption) (*EndTurnResponse, error)
+	VoteAgainst(ctx context.Context, in *VoteAgainstRequest, opts ...grpc.CallOption) (*VoteAgainstResponse, error)
+	Shoot(ctx context.Context, in *ShootRequest, opts ...grpc.CallOption) (*ShootResponse, error)
+	Check(ctx context.Context, in *CheckRequest, opts ...grpc.CallOption) (*CheckResponse, error)
 	PublishCheckResult(ctx context.Context, in *PublishCheckResultRequest, opts ...grpc.CallOption) (*PublishCheckResultResponse, error)
 }
 
@@ -70,36 +70,36 @@ func (x *mafiaLoginClient) Recv() (*Event, error) {
 	return m, nil
 }
 
-func (c *mafiaClient) FinishDay(ctx context.Context, in *FinishDayRequest, opts ...grpc.CallOption) (*FinishDayResponse, error) {
-	out := new(FinishDayResponse)
-	err := c.cc.Invoke(ctx, "/mafia.Mafia/FinishDay", in, out, opts...)
+func (c *mafiaClient) EndTurn(ctx context.Context, in *EndTurnRequest, opts ...grpc.CallOption) (*EndTurnResponse, error) {
+	out := new(EndTurnResponse)
+	err := c.cc.Invoke(ctx, "/mafia.Mafia/EndTurn", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *mafiaClient) ExecutePlayer(ctx context.Context, in *ExecutePlayerRequest, opts ...grpc.CallOption) (*ExecutePlayerResponse, error) {
-	out := new(ExecutePlayerResponse)
-	err := c.cc.Invoke(ctx, "/mafia.Mafia/ExecutePlayer", in, out, opts...)
+func (c *mafiaClient) VoteAgainst(ctx context.Context, in *VoteAgainstRequest, opts ...grpc.CallOption) (*VoteAgainstResponse, error) {
+	out := new(VoteAgainstResponse)
+	err := c.cc.Invoke(ctx, "/mafia.Mafia/VoteAgainst", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *mafiaClient) KillPlayer(ctx context.Context, in *KillPlayerRequest, opts ...grpc.CallOption) (*KillPlayerResponse, error) {
-	out := new(KillPlayerResponse)
-	err := c.cc.Invoke(ctx, "/mafia.Mafia/KillPlayer", in, out, opts...)
+func (c *mafiaClient) Shoot(ctx context.Context, in *ShootRequest, opts ...grpc.CallOption) (*ShootResponse, error) {
+	out := new(ShootResponse)
+	err := c.cc.Invoke(ctx, "/mafia.Mafia/Shoot", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *mafiaClient) CheckPlayer(ctx context.Context, in *CheckPlayerRequest, opts ...grpc.CallOption) (*CheckPlayerResponse, error) {
-	out := new(CheckPlayerResponse)
-	err := c.cc.Invoke(ctx, "/mafia.Mafia/CheckPlayer", in, out, opts...)
+func (c *mafiaClient) Check(ctx context.Context, in *CheckRequest, opts ...grpc.CallOption) (*CheckResponse, error) {
+	out := new(CheckResponse)
+	err := c.cc.Invoke(ctx, "/mafia.Mafia/Check", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -120,10 +120,10 @@ func (c *mafiaClient) PublishCheckResult(ctx context.Context, in *PublishCheckRe
 // for forward compatibility
 type MafiaServer interface {
 	Login(*LoginRequest, Mafia_LoginServer) error
-	FinishDay(context.Context, *FinishDayRequest) (*FinishDayResponse, error)
-	ExecutePlayer(context.Context, *ExecutePlayerRequest) (*ExecutePlayerResponse, error)
-	KillPlayer(context.Context, *KillPlayerRequest) (*KillPlayerResponse, error)
-	CheckPlayer(context.Context, *CheckPlayerRequest) (*CheckPlayerResponse, error)
+	EndTurn(context.Context, *EndTurnRequest) (*EndTurnResponse, error)
+	VoteAgainst(context.Context, *VoteAgainstRequest) (*VoteAgainstResponse, error)
+	Shoot(context.Context, *ShootRequest) (*ShootResponse, error)
+	Check(context.Context, *CheckRequest) (*CheckResponse, error)
 	PublishCheckResult(context.Context, *PublishCheckResultRequest) (*PublishCheckResultResponse, error)
 	mustEmbedUnimplementedMafiaServer()
 }
@@ -135,17 +135,17 @@ type UnimplementedMafiaServer struct {
 func (UnimplementedMafiaServer) Login(*LoginRequest, Mafia_LoginServer) error {
 	return status.Errorf(codes.Unimplemented, "method Login not implemented")
 }
-func (UnimplementedMafiaServer) FinishDay(context.Context, *FinishDayRequest) (*FinishDayResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method FinishDay not implemented")
+func (UnimplementedMafiaServer) EndTurn(context.Context, *EndTurnRequest) (*EndTurnResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method EndTurn not implemented")
 }
-func (UnimplementedMafiaServer) ExecutePlayer(context.Context, *ExecutePlayerRequest) (*ExecutePlayerResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method ExecutePlayer not implemented")
+func (UnimplementedMafiaServer) VoteAgainst(context.Context, *VoteAgainstRequest) (*VoteAgainstResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method VoteAgainst not implemented")
 }
-func (UnimplementedMafiaServer) KillPlayer(context.Context, *KillPlayerRequest) (*KillPlayerResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method KillPlayer not implemented")
+func (UnimplementedMafiaServer) Shoot(context.Context, *ShootRequest) (*ShootResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Shoot not implemented")
 }
-func (UnimplementedMafiaServer) CheckPlayer(context.Context, *CheckPlayerRequest) (*CheckPlayerResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method CheckPlayer not implemented")
+func (UnimplementedMafiaServer) Check(context.Context, *CheckRequest) (*CheckResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Check not implemented")
 }
 func (UnimplementedMafiaServer) PublishCheckResult(context.Context, *PublishCheckResultRequest) (*PublishCheckResultResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method PublishCheckResult not implemented")
@@ -184,74 +184,74 @@ func (x *mafiaLoginServer) Send(m *Event) error {
 	return x.ServerStream.SendMsg(m)
 }
 
-func _Mafia_FinishDay_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(FinishDayRequest)
+func _Mafia_EndTurn_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(EndTurnRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(MafiaServer).FinishDay(ctx, in)
+		return srv.(MafiaServer).EndTurn(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/mafia.Mafia/FinishDay",
+		FullMethod: "/mafia.Mafia/EndTurn",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(MafiaServer).FinishDay(ctx, req.(*FinishDayRequest))
+		return srv.(MafiaServer).EndTurn(ctx, req.(*EndTurnRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Mafia_ExecutePlayer_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ExecutePlayerRequest)
+func _Mafia_VoteAgainst_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(VoteAgainstRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(MafiaServer).ExecutePlayer(ctx, in)
+		return srv.(MafiaServer).VoteAgainst(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/mafia.Mafia/ExecutePlayer",
+		FullMethod: "/mafia.Mafia/VoteAgainst",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(MafiaServer).ExecutePlayer(ctx, req.(*ExecutePlayerRequest))
+		return srv.(MafiaServer).VoteAgainst(ctx, req.(*VoteAgainstRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Mafia_KillPlayer_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(KillPlayerRequest)
+func _Mafia_Shoot_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ShootRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(MafiaServer).KillPlayer(ctx, in)
+		return srv.(MafiaServer).Shoot(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/mafia.Mafia/KillPlayer",
+		FullMethod: "/mafia.Mafia/Shoot",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(MafiaServer).KillPlayer(ctx, req.(*KillPlayerRequest))
+		return srv.(MafiaServer).Shoot(ctx, req.(*ShootRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Mafia_CheckPlayer_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(CheckPlayerRequest)
+func _Mafia_Check_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CheckRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(MafiaServer).CheckPlayer(ctx, in)
+		return srv.(MafiaServer).Check(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/mafia.Mafia/CheckPlayer",
+		FullMethod: "/mafia.Mafia/Check",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(MafiaServer).CheckPlayer(ctx, req.(*CheckPlayerRequest))
+		return srv.(MafiaServer).Check(ctx, req.(*CheckRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -282,20 +282,20 @@ var Mafia_ServiceDesc = grpc.ServiceDesc{
 	HandlerType: (*MafiaServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
-			MethodName: "FinishDay",
-			Handler:    _Mafia_FinishDay_Handler,
+			MethodName: "EndTurn",
+			Handler:    _Mafia_EndTurn_Handler,
 		},
 		{
-			MethodName: "ExecutePlayer",
-			Handler:    _Mafia_ExecutePlayer_Handler,
+			MethodName: "VoteAgainst",
+			Handler:    _Mafia_VoteAgainst_Handler,
 		},
 		{
-			MethodName: "KillPlayer",
-			Handler:    _Mafia_KillPlayer_Handler,
+			MethodName: "Shoot",
+			Handler:    _Mafia_Shoot_Handler,
 		},
 		{
-			MethodName: "CheckPlayer",
-			Handler:    _Mafia_CheckPlayer_Handler,
+			MethodName: "Check",
+			Handler:    _Mafia_Check_Handler,
 		},
 		{
 			MethodName: "PublishCheckResult",
