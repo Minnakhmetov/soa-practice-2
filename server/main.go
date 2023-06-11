@@ -309,7 +309,7 @@ func makeGroupMsgSender(sender eventSender, members []string) *groupEventSender 
 func main() {
 	var host string
 	var port int
-	flag.StringVar(&host, "host", "localhost", "host")
+	flag.StringVar(&host, "host", "", "host")
 	flag.IntVar(&port, "port", 65434, "port")
 	flag.Parse()
 

@@ -19,8 +19,8 @@ const (
 
 var RoleToCount = map[Role]int{
 	RoleMafia:    1,
-	RoleCommisar: 0,
-	RoleCitizen:  0,
+	RoleCommisar: 1,
+	RoleCitizen:  2,
 }
 
 var PlayersInGame = 1

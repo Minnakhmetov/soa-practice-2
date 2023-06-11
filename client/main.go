@@ -124,7 +124,6 @@ func main() {
 
 	doRandomAction := func(phase mafia.GamePhaseType) {
 		alivePlayers, err := client.GetAlivePlayers()
-		println("dsg;lk;gldkf;gkf;dghi")
 		if err != nil {
 			panic(err)
 		}
