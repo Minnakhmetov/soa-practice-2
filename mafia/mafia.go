@@ -23,7 +23,7 @@ var RoleToCount = map[Role]int{
 	RoleCitizen:  2,
 }
 
-var PlayersInGame = 1
+var PlayersInGame = 4
 
 var PhaseDuration = map[GamePhaseType]time.Duration{
 	GamePhaseTypeDay:   time.Second * 60,
