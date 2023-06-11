@@ -17,13 +17,19 @@ message LoginResponse {
     oneof event {
         PhaseChange phase_change = 1;
         NewMessage new_message = 2;
+        RoleAssignment role_assignment = 3;
     }
 
     message PhaseChange {
         string new_phase = 1;
     }
+
     message NewMessage {
         string text = 1;
+    }
+
+    message RoleAssignment {
+        string role = 1;
     }
 }
 

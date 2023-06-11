@@ -19,11 +19,11 @@ const (
 
 var RoleToCount = map[Role]int{
 	RoleMafia:    1,
-	RoleCommisar: 1,
-	RoleCitizen:  1,
+	RoleCommisar: 0,
+	RoleCitizen:  0,
 }
 
-var PlayersInGame = 3
+var PlayersInGame = 1
 
 var PhaseDuration = map[GamePhaseType]time.Duration{
 	GamePhaseTypeDay:   time.Second * 60,

@@ -19,7 +19,7 @@ type gameSession struct {
 	nextPhase            chan gamePhase
 	currentPhase         gamePhase
 	uncoveredMafia       []string
-	groupMsgSender
+	groupEventSender
 }
 
 func (t *gameSession) enqueuePhase(phase gamePhase) {
@@ -28,7 +28,7 @@ func (t *gameSession) enqueuePhase(phase gamePhase) {
 
 func (t *gameSession) kill(username string) {
 	t.playerInfoByUsername[username].isDead = true
-	t.sendAllServerMessage(fmt.Sprintf("%s died.", username))
+	t.sendAllMsgByServer(fmt.Sprintf("%s died.", username))
 }
 
 func (t *gameSession) getAliveMafiaCount() int {
@@ -91,7 +91,7 @@ func (t *gameSession) AddUncoveredMafia(mafia string) {
 	t.uncoveredMafia = append(t.uncoveredMafia, mafia)
 }
 
-func MakeGameSession(usernames []string, sender msgSender) *gameSession {
+func MakeGameSession(usernames []string, sender eventSender) *gameSession {
 	var roles []mafia.Role
 
 	for role, count := range mafia.RoleToCount {
@@ -112,9 +112,9 @@ func MakeGameSession(usernames []string, sender msgSender) *gameSession {
 		playerInfoByUsername: map[string]*playerInfo{},
 		isFinished:           false,
 		finish:               make(chan struct{}),
-		groupMsgSender: groupMsgSender{
-			members:   usernames,
-			msgSender: sender,
+		groupEventSender: groupEventSender{
+			members:     usernames,
+			eventSender: sender,
 		},
 		nextPhase: make(chan gamePhase, 1),
 	}
@@ -131,28 +131,30 @@ func MakeGameSession(usernames []string, sender msgSender) *gameSession {
 
 func (t *gameSession) Run() {
 	for player, playerInfo := range t.playerInfoByUsername {
-		t.sendServerMessage(player, fmt.Sprintf("The game begins. Your role: %s", playerInfo.role))
+		t.sendMsgFromServer(player, fmt.Sprintf("The game begins. Your role: %s", playerInfo.role))
+		t.sendRoleAssignment(player, playerInfo.role)
 	}
+
 	go func() {
 		for phase := range t.nextPhase {
 			t.currentPhase = phase
 			RunGamePhase(phase)
-			println(t.getAliveMafiaCount(), t.getAliveNonMafiaCount())
 			if t.mafiaWon() {
-				t.sendAllServerMessage("Game over. Mafia won.")
+				t.sendAllMsgByServer("Game over. Mafia won.")
 				return
 			} else if t.citizensWon() {
-				t.sendAllServerMessage("Game over. Citizen won.")
+				t.sendAllMsgByServer("Game over. Citizen won.")
 				return
 			}
 		}
 	}()
+
 	t.enqueuePhase(MakeGamePhaseDay(t))
 }
 
 func (t *gameSession) doPhaseAction(player string, action func(string)) {
 	if t.IsDead(player) {
-		t.sendServerMessage(player, "You can't do it when you're dead.")
+		t.sendMsgFromServer(player, "You can't do it when you're dead.")
 		return
 	}
 	action(player)
@@ -160,11 +162,11 @@ func (t *gameSession) doPhaseAction(player string, action func(string)) {
 
 func (t *gameSession) doPhaseActionWithTarget(player string, target string, action func(string, string)) {
 	if t.IsDead(player) {
-		t.sendServerMessage(player, "You can't do it when you're dead.")
+		t.sendMsgFromServer(player, "You can't do it when you're dead.")
 		return
 	}
 	if !t.playerExists(target) {
-		t.sendServerMessage(player, fmt.Sprintf("User %s not found.", target))
+		t.sendMsgFromServer(player, fmt.Sprintf("User %s not found.", target))
 		return
 	}
 	action(player, target)
@@ -188,4 +190,14 @@ func (t *gameSession) PublishCheckResult(player string) {
 
 func (t *gameSession) EndTurn(player string) {
 	t.doPhaseAction(player, t.currentPhase.EndTurn)
+}
+
+func (t *gameSession) GetAlivePlayers() []string {
+	var alivePlayers []string
+	for player, playerInfo := range t.playerInfoByUsername {
+		if !playerInfo.isDead {
+			alivePlayers = append(alivePlayers, player)
+		}
+	}
+	return alivePlayers
 }

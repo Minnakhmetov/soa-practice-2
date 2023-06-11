@@ -21,7 +21,7 @@ const (
 )
 
 type connection struct {
-	ch    chan string
+	ch    chan *pb.LoginResponse
 	close chan struct{}
 }
 
@@ -34,7 +34,7 @@ type mafiaServer struct {
 	waitingListMutex sync.Mutex
 	waitingList      []string
 
-	msgSender
+	eventSender
 }
 
 func (t *mafiaServer) init() {
@@ -45,23 +45,50 @@ func (t *mafiaServer) disconnect(username string) {
 	delete(t.playerToConnecton, username)
 }
 
-func (t *mafiaServer) send(sender string, receiver string, msg string) {
-	log.Printf("sending \"%s\" from %s to %s\n", msg, sender, receiver)
+func (t *mafiaServer) send(receiver string, event *pb.LoginResponse) {
+	// log.Printf("sending \"%s\" from %s to %s\n", msg, sender, receiver)
 	conn, ok := t.playerToConnecton[receiver]
 	if !ok {
 		panic(fmt.Sprintf("user %s not connected.", receiver))
 	}
 	select {
-	case conn.ch <- fmt.Sprintf("[%s] %s", sender, msg):
+	case conn.ch <- event:
 		// noop
 	default:
 		log.Printf("%s user msg buffer is full", receiver)
-		t.disconnect(sender)
+		t.disconnect(receiver)
 	}
 }
 
-func (t *mafiaServer) sendServerMessage(receiver string, msg string) {
-	t.send("server", receiver, msg)
+func (t *mafiaServer) sendPhaseChange(receiver string, newPhase mafia.GamePhaseType) {
+	log.Printf("sending phase change \"%s\" to %s\n", newPhase, receiver)
+	t.send(receiver, &pb.LoginResponse{
+		Event: &pb.LoginResponse_PhaseChange_{
+			PhaseChange: &pb.LoginResponse_PhaseChange{NewPhase: string(newPhase)},
+		},
+	})
+}
+
+func (t *mafiaServer) sendRoleAssignment(receiver string, role mafia.Role) {
+	log.Printf("sending role assignment \"%s\" to %s\n", role, receiver)
+	t.send(receiver, &pb.LoginResponse{
+		Event: &pb.LoginResponse_RoleAssignment_{
+			RoleAssignment: &pb.LoginResponse_RoleAssignment{Role: string(role)},
+		},
+	})
+}
+
+func (t *mafiaServer) sendMsg(sender string, receiver string, msg string) {
+	log.Printf("sending msg \"%s\" from %s to %s\n", msg, sender, receiver)
+	t.send(receiver, &pb.LoginResponse{
+		Event: &pb.LoginResponse_NewMessage_{
+			NewMessage: &pb.LoginResponse_NewMessage{Text: msg},
+		},
+	})
+}
+
+func (t *mafiaServer) sendMsgFromServer(receiver string, msg string) {
+	t.sendMsg("server", receiver, msg)
 }
 
 func (t *mafiaServer) runGameSession(usernames []string) {
@@ -96,8 +123,8 @@ func (t *mafiaServer) addToWaitingList(username string) {
 		log.Printf("need %d more players for game", needPlayers)
 
 		sender := makeGroupMsgSender(t, t.waitingList)
-		sender.sendAllServerMessage(fmt.Sprintf("%s connected", username))
-		sender.sendAllServerMessage(
+		sender.sendAllMsgByServer(fmt.Sprintf("%s connected", username))
+		sender.sendAllMsgByServer(
 			fmt.Sprintf("Waiting for players. %d more players are needed.", needPlayers),
 		)
 
@@ -118,7 +145,7 @@ func (t *mafiaServer) Login(request *mafia.LoginRequest, serv mafia.Mafia_LoginS
 	}
 
 	close := make(chan struct{})
-	ch := make(chan string, 5)
+	ch := make(chan *pb.LoginResponse, 100)
 
 	t.playerToConnecton[username] = &connection{ch: ch, close: close}
 
@@ -138,12 +165,8 @@ func (t *mafiaServer) Login(request *mafia.LoginRequest, serv mafia.Mafia_LoginS
 			case <-close:
 				t.disconnect(username)
 				return
-			case msg := <-ch:
-				err := serv.Send(&pb.LoginResponse{
-					Event: &pb.LoginResponse_NewMessage_{
-						NewMessage: &pb.LoginResponse_NewMessage{Text: msg},
-					},
-				})
+			case resp := <-ch:
+				err := serv.Send(resp)
 
 				if err != nil {
 					log.Printf("error when sending message to %s: %s\n", username, err.Error())
@@ -159,7 +182,7 @@ func (t *mafiaServer) Login(request *mafia.LoginRequest, serv mafia.Mafia_LoginS
 	areYouReady <- struct{}{}
 	<-yesCaptain
 
-	t.sendServerMessage(username, "You are connected to server.")
+	t.sendMsgFromServer(username, "You are connected to server.")
 
 	// TO DO: check if player already in active game session (reconnected)
 
@@ -226,6 +249,15 @@ func (t *mafiaServer) PublishCheckResult(ctx context.Context, _ *mafia.PublishCh
 	return handleClientAction[mafia.PublishCheckResultResponse](t, ctx, (*gameSession).PublishCheckResult)
 }
 
+func (t *mafiaServer) GetAlivePlayers(ctx context.Context, request *pb.GetAlivePlayersRequest) (*pb.GetAlivePlayersResponse, error) {
+	username := extractUsername(ctx)
+	session, err := t.GetGameSession(username)
+	if err != nil {
+		return nil, err
+	}
+	return &pb.GetAlivePlayersResponse{AlivePlayers: session.GetAlivePlayers()}, nil
+}
+
 func extractUsername(ctx context.Context) string {
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
@@ -241,32 +273,37 @@ func MakeMafiaServer() *mafiaServer {
 	}
 }
 
-type msgSender interface {
-	send(sender string, receiver string, msg string)
-	sendServerMessage(receiver string, msg string)
+type eventSender interface {
+	send(receiver string, event *pb.LoginResponse)
+	sendPhaseChange(receiver string, newPhase mafia.GamePhaseType)
+	sendRoleAssignment(receiver string, role mafia.Role)
+	sendMsg(sender string, receiver string, msg string)
+	sendMsgFromServer(receiver string, msg string)
 }
 
-type groupMsgSender struct {
-	msgSender
+type groupEventSender struct {
+	eventSender
 	members []string
 }
 
-func (t *groupMsgSender) broadcast(sender string, msg string) {
+func (t *groupEventSender) sendMsgAll(sender string, msg string) {
 	for _, player := range t.members {
-		t.send(sender, player, msg)
+		t.sendMsg(sender, player, msg)
 	}
 }
 
-func (t *groupMsgSender) sendAll(sender string, msg string) {
-	t.broadcast(sender, msg)
+func (t *groupEventSender) sendAllPhaseChange(newPhase mafia.GamePhaseType) {
+	for _, player := range t.members {
+		t.sendPhaseChange(player, newPhase)
+	}
 }
 
-func (t *groupMsgSender) sendAllServerMessage(msg string) {
-	t.sendAll("server", msg)
+func (t *groupEventSender) sendAllMsgByServer(msg string) {
+	t.sendMsgAll("server", msg)
 }
 
-func makeGroupMsgSender(sender msgSender, members []string) *groupMsgSender {
-	return &groupMsgSender{msgSender: sender, members: members}
+func makeGroupMsgSender(sender eventSender, members []string) *groupEventSender {
+	return &groupEventSender{eventSender: sender, members: members}
 }
 
 func main() {

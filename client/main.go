@@ -7,9 +7,11 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math/rand"
 	"os"
 	"strings"
 
+	"github.com/Minnakhmetov/soa-practice-2/mafia"
 	pb "github.com/Minnakhmetov/soa-practice-2/mafia"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -52,6 +54,48 @@ func getHelpList() string {
 	return strings.Join(lines, "\n\n")
 }
 
+type mafiaClient struct {
+	username         string
+	protoMafiaClient pb.MafiaClient
+}
+
+func (t *mafiaClient) Shoot(target string) error {
+	_, err := t.protoMafiaClient.Shoot(getContextWithUsername(t.username), &pb.ShootRequest{Target: target})
+	return err
+}
+
+func (t *mafiaClient) VoteAgainst(target string) error {
+	_, err := t.protoMafiaClient.VoteAgainst(getContextWithUsername(t.username), &pb.VoteAgainstRequest{Target: target})
+	return err
+}
+
+func (t *mafiaClient) Check(target string) error {
+	_, err := t.protoMafiaClient.Check(getContextWithUsername(t.username), &pb.CheckRequest{Target: target})
+	return err
+}
+
+func (t *mafiaClient) EndTurn() error {
+	_, err := t.protoMafiaClient.EndTurn(getContextWithUsername(t.username), &pb.EndTurnRequest{})
+	return err
+}
+
+func (t *mafiaClient) PublishCheckResult() error {
+	_, err := t.protoMafiaClient.PublishCheckResult(getContextWithUsername(t.username), &pb.PublishCheckResultRequest{})
+	return err
+}
+
+func (t *mafiaClient) GetAlivePlayers() ([]string, error) {
+	response, err := t.protoMafiaClient.GetAlivePlayers(getContextWithUsername(t.username), &pb.GetAlivePlayersRequest{})
+	if err != nil {
+		return nil, err
+	}
+	return response.AlivePlayers, nil
+}
+
+func (t *mafiaClient) Login() (pb.Mafia_LoginClient, error) {
+	return t.protoMafiaClient.Login(getContextWithUsername(t.username), &pb.LoginRequest{})
+}
+
 func main() {
 	var host string
 	var port int
@@ -74,10 +118,33 @@ func main() {
 	}
 	defer conn.Close()
 
-	client := pb.NewMafiaClient(conn)
+	client := &mafiaClient{username: username, protoMafiaClient: pb.NewMafiaClient(conn)}
+
+	var role mafia.Role
+
+	doRandomAction := func(phase mafia.GamePhaseType) {
+		alivePlayers, err := client.GetAlivePlayers()
+		println("dsg;lk;gldkf;gkf;dghi")
+		if err != nil {
+			panic(err)
+		}
+		if phase == mafia.GamePhaseTypeDay {
+			if role == mafia.RoleCommisar {
+				client.PublishCheckResult()
+			}
+			client.VoteAgainst(alivePlayers[rand.Intn(len(alivePlayers))])
+			client.EndTurn()
+		} else {
+			if role == mafia.RoleMafia {
+				client.Shoot(alivePlayers[rand.Intn(len(alivePlayers))])
+			} else if role == mafia.RoleCommisar {
+				client.Check(alivePlayers[rand.Intn(len(alivePlayers))])
+			}
+		}
+	}
 
 	go func() {
-		stream, err := client.Login(getContextWithUsername(username), &pb.LoginRequest{})
+		stream, err := client.Login()
 		if err != nil {
 			panic(err)
 		}
@@ -94,7 +161,13 @@ func main() {
 				case *pb.LoginResponse_NewMessage_:
 					println(e.NewMessage.Text)
 				case *pb.LoginResponse_PhaseChange_:
-					//noop
+					println("got phase change", e.PhaseChange.NewPhase)
+					if autoMode {
+						doRandomAction(pb.GamePhaseType(e.PhaseChange.NewPhase))
+					}
+				case *pb.LoginResponse_RoleAssignment_:
+					println("got role", e.RoleAssignment.GetRole())
+					role = pb.Role(e.RoleAssignment.GetRole())
 				}
 			}
 		}
@@ -121,15 +194,15 @@ func main() {
 
 			switch tokens[0] {
 			case "/endturn":
-				_, err = client.EndTurn(getContextWithUsername(username), &pb.EndTurnRequest{})
+				err = client.EndTurn()
 			case "/check":
-				_, err = client.Check(getContextWithUsername(username), &pb.CheckRequest{Target: tokens[1]})
+				err = client.Check(tokens[1])
 			case "/vote":
-				_, err = client.VoteAgainst(getContextWithUsername(username), &pb.VoteAgainstRequest{Target: tokens[1]})
+				err = client.VoteAgainst(tokens[1])
 			case "/shoot":
-				_, err = client.Shoot(getContextWithUsername(username), &pb.ShootRequest{Target: tokens[1]})
+				err = client.Shoot(tokens[1])
 			case "/publish":
-				_, err = client.PublishCheckResult(getContextWithUsername(username), &pb.PublishCheckResultRequest{})
+				err = client.PublishCheckResult()
 			case "/help":
 				println(getHelpList())
 			}
