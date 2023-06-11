@@ -80,9 +80,10 @@ func (t *mafiaServer) sendRoleAssignment(receiver string, role mafia.Role) {
 
 func (t *mafiaServer) sendMsg(sender string, receiver string, msg string) {
 	log.Printf("sending msg \"%s\" from %s to %s\n", msg, sender, receiver)
+	text := fmt.Sprintf("[%s] %s", sender, msg)
 	t.send(receiver, &pb.LoginResponse{
 		Event: &pb.LoginResponse_NewMessage_{
-			NewMessage: &pb.LoginResponse_NewMessage{Text: msg},
+			NewMessage: &pb.LoginResponse_NewMessage{Text: text},
 		},
 	})
 }

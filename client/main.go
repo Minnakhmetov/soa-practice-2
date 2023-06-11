@@ -160,12 +160,10 @@ func main() {
 				case *pb.LoginResponse_NewMessage_:
 					println(e.NewMessage.Text)
 				case *pb.LoginResponse_PhaseChange_:
-					println("got phase change", e.PhaseChange.NewPhase)
 					if autoMode {
 						doRandomAction(pb.GamePhaseType(e.PhaseChange.NewPhase))
 					}
 				case *pb.LoginResponse_RoleAssignment_:
-					println("got role", e.RoleAssignment.GetRole())
 					role = pb.Role(e.RoleAssignment.GetRole())
 				}
 			}
