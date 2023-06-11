@@ -18,6 +18,11 @@ message LoginResponse {
         PhaseChange phase_change = 1;
         NewMessage new_message = 2;
         RoleAssignment role_assignment = 3;
+        NewBrokerChannel new_broker_channel = 4;
+    }
+
+    message NewBrokerChannel {
+        string name = 1;
     }
 
     message PhaseChange {

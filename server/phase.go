@@ -22,15 +22,21 @@ type gamePhase interface {
 	GetType() mafia.GamePhaseType
 	GetPhaseDuration() time.Duration
 	GetFinishChannel() chan struct{}
+	GetRedisChannel(player string) string
 }
 
 type baseGamePhase struct {
-	name        string
-	phaseType   mafia.GamePhaseType
-	duration    time.Duration
-	gameSession *gameSession
-	finish      chan struct{}
+	name               string
+	phaseType          mafia.GamePhaseType
+	duration           time.Duration
+	gameSession        *gameSession
+	finish             chan struct{}
+	redisChannelByRole map[mafia.Role]string
 	groupEventSender
+}
+
+func (t *baseGamePhase) GetRedisChannel(player string) string {
+	return t.redisChannelByRole[t.GetGameSession().GetPlayerRole(player)]
 }
 
 func (t *baseGamePhase) GetType() mafia.GamePhaseType {
@@ -55,6 +61,10 @@ func (t *baseGamePhase) GetFinishChannel() chan struct{} {
 
 func RunGamePhase(phase gamePhase) {
 	phase.GetGameSession().sendAllPhaseChange(phase.GetType())
+	for _, player := range phase.GetGameSession().GetAlivePlayers() {
+		phase.GetGameSession().sendNewRedisChannel(player, phase.GetRedisChannel(player))
+	}
+
 	phase.OnStart()
 
 	sendLeftTimeMsg := func(timeLeft time.Duration) {
@@ -206,14 +216,21 @@ func (t *gamePhaseDay) PublishCheckResult(player string) {
 }
 
 func MakeGamePhaseDay(session *gameSession) *gamePhaseDay {
+	commonChat := generateRandomString(10)
+	redisChannelByRole := map[mafia.Role]string{
+		mafia.RoleMafia:    commonChat,
+		mafia.RoleCommisar: commonChat,
+		mafia.RoleCitizen:  commonChat,
+	}
 	return &gamePhaseDay{
 		baseGamePhase: baseGamePhase{
-			name:             "day",
-			phaseType:        mafia.GamePhaseTypeDay,
-			duration:         mafia.PhaseDuration[mafia.GamePhaseTypeDay],
-			gameSession:      session,
-			finish:           make(chan struct{}),
-			groupEventSender: session.groupEventSender,
+			redisChannelByRole: redisChannelByRole,
+			name:               "day",
+			phaseType:          mafia.GamePhaseTypeDay,
+			duration:           mafia.PhaseDuration[mafia.GamePhaseTypeDay],
+			gameSession:        session,
+			finish:             make(chan struct{}),
+			groupEventSender:   session.groupEventSender,
 		},
 		votesAgainstCount: map[string]int{},
 		playerVote:        map[string]string{},
@@ -303,14 +320,20 @@ func (t *gamePhaseNight) OnFinish() {
 }
 
 func MakeGamePhaseNight(session *gameSession) *gamePhaseNight {
+	redisChannelByRole := map[mafia.Role]string{
+		mafia.RoleMafia:    generateRandomString(10),
+		mafia.RoleCommisar: generateRandomString(10),
+		mafia.RoleCitizen:  "",
+	}
 	return &gamePhaseNight{
 		baseGamePhase: baseGamePhase{
-			name:             "night",
-			phaseType:        mafia.GamePhaseTypeNight,
-			duration:         mafia.PhaseDuration[mafia.GamePhaseTypeNight],
-			gameSession:      session,
-			finish:           make(chan struct{}),
-			groupEventSender: session.groupEventSender,
+			redisChannelByRole: redisChannelByRole,
+			name:               "night",
+			phaseType:          mafia.GamePhaseTypeNight,
+			duration:           mafia.PhaseDuration[mafia.GamePhaseTypeNight],
+			gameSession:        session,
+			finish:             make(chan struct{}),
+			groupEventSender:   session.groupEventSender,
 		},
 		checkUsed:   false,
 		shotByMafia: "",

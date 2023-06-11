@@ -49,7 +49,8 @@ func (t *mafiaServer) send(receiver string, event *pb.LoginResponse) {
 	// log.Printf("sending \"%s\" from %s to %s\n", msg, sender, receiver)
 	conn, ok := t.playerToConnecton[receiver]
 	if !ok {
-		panic(fmt.Sprintf("user %s not connected.", receiver))
+		log.Printf("Couldn't send event to %s. User is not connected", receiver)
+		return
 	}
 	select {
 	case conn.ch <- event:
@@ -58,6 +59,15 @@ func (t *mafiaServer) send(receiver string, event *pb.LoginResponse) {
 		log.Printf("%s user msg buffer is full", receiver)
 		t.disconnect(receiver)
 	}
+}
+
+func (t *mafiaServer) sendNewRedisChannel(receiver string, newChannel string) {
+	log.Printf("sending new redis channel \"%s\" to %s\n", newChannel, receiver)
+	t.send(receiver, &pb.LoginResponse{
+		Event: &pb.LoginResponse_NewBrokerChannel_{
+			NewBrokerChannel: &pb.LoginResponse_NewBrokerChannel{Name: string(newChannel)},
+		},
+	})
 }
 
 func (t *mafiaServer) sendPhaseChange(receiver string, newPhase mafia.GamePhaseType) {
@@ -280,6 +290,7 @@ type eventSender interface {
 	sendRoleAssignment(receiver string, role mafia.Role)
 	sendMsg(sender string, receiver string, msg string)
 	sendMsgFromServer(receiver string, msg string)
+	sendNewRedisChannel(receiver string, newChannel string)
 }
 
 type groupEventSender struct {
@@ -310,6 +321,7 @@ func makeGroupMsgSender(sender eventSender, members []string) *groupEventSender 
 func main() {
 	var host string
 	var port int
+
 	flag.StringVar(&host, "host", "", "host")
 	flag.IntVar(&port, "port", 65434, "port")
 	flag.Parse()
@@ -321,6 +333,7 @@ func main() {
 		panic(err)
 	}
 	srv := grpc.NewServer()
+
 	pb.RegisterMafiaServer(srv, MakeMafiaServer())
 	srv.Serve(listener)
 }
