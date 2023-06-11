@@ -1,6 +1,6 @@
 # Mafia Game
 
-Server supports multiple parallel game sessions.
+Server supports multiple parallel game sessions, private chat for mafiosi during the night. Clients use redis as a message broker.
 
 ## Run Server
 
@@ -21,7 +21,7 @@ Type `/help` to show available commands.
 
 ```
 $ cd client
-$ go run . --username mafioso123 --auto=1
+$ go run . --username mafioso412
 ```
 
 
