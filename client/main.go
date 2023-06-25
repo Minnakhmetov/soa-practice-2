@@ -49,9 +49,18 @@ func getCommandUsage(command string) string {
 
 func getHelpList() string {
 	var lines []string
-	for command := range commandInfoByName {
-		lines = append(lines, getCommandUsage(command))
+
+	addLine := func(newLine string) {
+		lines = append(lines, newLine)
 	}
+
+	addLine("")
+	addLine("type message for other players or one of commands below and press enter:")
+
+	for command := range commandInfoByName {
+		addLine(getCommandUsage(command))
+	}
+
 	return strings.Join(lines, "\n\n")
 }
 
@@ -130,6 +139,7 @@ func main() {
 		if err != nil {
 			panic(err)
 		}
+		println("doing random action")
 		if phase == mafia.GamePhaseTypeDay {
 			if role == mafia.RoleCommisar {
 				client.PublishCheckResult()
@@ -193,6 +203,7 @@ func main() {
 				case *pb.LoginResponse_NewMessage_:
 					println(e.NewMessage.Text)
 				case *pb.LoginResponse_PhaseChange_:
+					println("got phase change")
 					if autoMode {
 						doRandomAction(pb.GamePhaseType(e.PhaseChange.NewPhase))
 					}
@@ -209,6 +220,11 @@ func main() {
 
 	for scanner.Scan() {
 		line := scanner.Text()
+
+		if len(line) == 0 {
+			println("type /help for info")
+			continue
+		}
 
 		if line[0] == '/' {
 			tokens := strings.Split(line, " ")
